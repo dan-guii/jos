@@ -12,8 +12,12 @@
 #include <kern/kdebug.h>
 #include <kern/trap.h>
 
+#include "kdebug.h"
+
 #define CMDBUF_SIZE	80	// enough for one VGA text line
 
+int mon_show(int argc, char **argv, struct Trapframe *tf);
+int mon_si(int argc, char **argv, struct Trapframe *tf);
 
 struct Command {
 	const char *name;
@@ -26,6 +30,9 @@ struct Command {
 static struct Command commands[] = {
 	{ "help", "Display this list of commands", mon_help },
 	{ "kerninfo", "Display information about the kernel", mon_kerninfo },
+	{ "backtrace", "Display a listing of function call frames", mon_backtrace },
+	{ "show", "Display colorful ASCII art", mon_show },
+	{ "si", "Run next instruction and trap back into monitor", mon_si }
 };
 
 /***** Implementations of basic kernel monitor commands *****/
@@ -62,10 +69,60 @@ mon_backtrace(int argc, char **argv, struct Trapframe *tf)
 	// LAB 1: Your code here.
     // HINT 1: use read_ebp().
     // HINT 2: print the current ebp on the first line (not current_ebp[0])
+	uint32_t ebp = read_ebp();				// Address of base pointer
+	uint32_t eip;							// Address of instruction pointer
+	uint32_t args[5];						// Address of arguments
+	struct Eipdebuginfo info;
+
+	cprintf("Stack backtrace:\n");
+	while (ebp != 0) {										// ebp is originally at 0
+		eip = *((uint32_t*) (ebp + 4)); 					// eip is the next instruction after ebp
+		cprintf("ebp %x eip %x args", ebp, eip);
+		for (int i = 0; i < 5; i++) {						// Loops to get arguments
+			args[i] = *((uint32_t*) (ebp + 8 + (i * 4)));	// Add 8 to account for ebp and eip, and 4 for each argument
+			cprintf(" %08x ", args[i]);
+		}
+		cprintf("\n");
+		
+		int result = debuginfo_eip(eip, &info);
+		
+		cprintf("%s:%d: %.*s+%d\n", info.eip_file, info.eip_line, info.eip_fn_namelen, info.eip_fn_name, eip - info.eip_fn_addr);
+
+		ebp = *((uint32_t*) ebp);							// ebp points to address of previous ebp, so cast to pointer and dereference
+	}
 	return 0;
 }
 
+int mon_show(int argc, char **argv, struct Trapframe *tf)
+{
+    // Sample ASCII art using colors
 
+    cprintf("\x1b[32m░░░░░░░░░░▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄░░░░░░░░░\n");
+    cprintf("\x1b[33m░░░░░░░░▄▀░░░░░░░░░░░░▄░░░░░░░▀▄░░░░░░░\n");
+    cprintf("\x1b[34m░░░░░░░░█░░▄░░░░▄░░░░░░░░░░░░░░█░░░░░░░\n");
+    cprintf("\x1b[35m░░░░░░░░█░░░░░░░░░░░░▄█▄▄░░▄░░░█░▄▄▄░░░\n");
+    cprintf("\x1b[36m░▄▄▄▄▄░░█░░░░░░▀░░░░▀█░░▀▄░░░░░█▀▀░██░░\n");
+    cprintf("\x1b[32m░██▄▀██▄█░░░▄░░░░░░░██░░░░▀▀▀▀▀░░░░██░░\n");
+    cprintf("\x1b[33m░░▀██▄▀██░░░░░░░░▀░██▀░░░░░░░░░░░░░▀██░\n");
+    cprintf("\x1b[34m░░░░▀████░▀░░░░▄░░░██░░░▄█░░░░▄░▄█░░██░\n");
+    cprintf("\x1b[35m░░░░░░░▀█░░░░▄░░░░░██░░░░▄░░░▄░░▄░░░██░\n");
+    cprintf("\x1b[36m░░░░░░░▄█▄░░░░░░░░░░░▀▄░░▀▀▀▀▀▀▀▀░░▄▀░░\n");
+	cprintf("\x1b[31m░░░░░░█▀▀█████████▀▀▀▀████████████▀░░░░\n");
+    cprintf("\x1b[32m░░░░░░████▀░░███▀░░░░░░▀███░░▀██▀░░░░░░\n");
+    cprintf("\x1b[33m░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░\x1b[0m\n");
+
+    return 0;
+}
+
+int mon_si(int argc, char **argv, struct Trapframe *tf) {
+    if (!tf) {
+        cprintf("No trap frame available.\n");
+        return 0;
+    }
+
+    tf->tf_eflags |= FL_TF;		// Single Step Trap Flag
+    return -1; 
+}
 
 /***** Kernel monitor command interpreter *****/
 

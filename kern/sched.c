@@ -30,6 +30,38 @@ sched_yield(void)
 
 	// LAB 4: Your code here.
 
+	// int current_envid = -1;
+	// if(thiscpu -> cpu_env != NULL)
+	// {
+	// 	current_envid = thiscpu -> cpu_env -> env_id;
+	// }
+
+	int i = 0;
+
+
+
+	static int left_off_at = -1;
+	struct Env * currently_running_env = thiscpu -> cpu_env;
+	
+	int looking_index;
+	for(int i = 0; i < NENV; i++)
+	{
+		looking_index = (i + left_off_at + 1) % NENV;
+		if(envs[looking_index].env_status == ENV_RUNNABLE)
+		{
+			left_off_at = looking_index;
+			env_run(&envs[looking_index]);	
+			break;	
+		}
+	}
+	if(i == NENV)
+	{
+		if(thiscpu -> cpu_env -> env_status == ENV_RUNNING)
+		{
+			env_run(thiscpu -> cpu_env);
+		}
+	}
+
 	// sched_halt never returns
 	sched_halt();
 }
